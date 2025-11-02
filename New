@@ -1,0 +1,635 @@
+-- POPCAT x HUB - v4.0 (Dynamic Nav Width, No-Blur, Text-Safe, Symmetric)
+-- Clean rebuild to fix syntax errors and add requested behavior.
+--  * No Lighting/Blur usage
+--  * F8 open/close uses slide (no scale) -> crisp text
+--  * Left nav auto-expands to fit long titles; right content reflows
+--  * Symmetric top spacing; content buttons account for right grip
+--  * No ripple on grip; ripple kept on buttons
+
+local Players      = game:GetService("Players")
+local UIS          = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local TextService  = game:GetService("TextService")
+local LP           = Players.LocalPlayer
+
+---------------------------------------------------------------------
+-- THEME
+---------------------------------------------------------------------
+local THEME = {
+  window      = Color3.fromRGB(0,0,0),        -- solid black back layer
+  panel       = Color3.fromRGB(36,43,47),     -- lighter panels (nav & content)
+  card        = Color3.fromRGB(26,32,35),     -- button bg
+  cardHover   = Color3.fromRGB(33,41,45),
+  cardActive  = Color3.fromRGB(41,49,53),
+  text        = Color3.fromRGB(235,240,245),
+  subtext     = Color3.fromRGB(170,180,185),
+  stroke      = Color3.fromRGB(255,255,255),
+  selBar      = Color3.fromRGB(70,160,255),
+}
+
+---------------------------------------------------------------------
+-- HELPERS
+---------------------------------------------------------------------
+local function roundify(gui, r)
+  local c = Instance.new("UICorner")
+  c.CornerRadius = UDim.new(0, r or 16)
+  c.Parent = gui
+  return c
+end
+
+local function stroke(gui, col, th, tr)
+  local s = Instance.new("UIStroke")
+  s.Color = col or THEME.stroke
+  s.Thickness = th or 1
+  s.Transparency = tr or .85
+  s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+  s.Parent = gui
+  return s
+end
+
+local function t(obj, info, props)
+  TweenService:Create(obj, info, props):Play()
+end
+
+local function spring(dur)
+  return TweenInfo.new(dur or 0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+end
+
+local function ripple(parent, pos)
+  local r = Instance.new("Frame")
+  r.BackgroundColor3 = Color3.fromRGB(255,255,255)
+  r.BackgroundTransparency = 0.8
+  r.AnchorPoint = Vector2.new(0.5,0.5)
+  r.Position = UDim2.fromOffset(pos.X, pos.Y)
+  r.Size = UDim2.fromOffset(0,0)
+  r.ZIndex = (parent.ZIndex or 1) + 1
+  r.Parent = parent
+  roundify(r, 9999)
+  local max = math.max(parent.AbsoluteSize.X, parent.AbsoluteSize.Y) * 1.6
+  t(r, TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(max,max), BackgroundTransparency = 1})
+  game.Debris:AddItem(r, 0.45)
+end
+
+local function hover(btn, normal, over)
+  btn.MouseEnter:Connect(function() t(btn, spring(0.16), {BackgroundColor3 = over}) end)
+  btn.MouseLeave:Connect(function() t(btn, spring(0.18), {BackgroundColor3 = normal}) end)
+end
+
+local function fadeIn(obj, dur)
+  dur = dur or 0.18
+  if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+    obj.TextTransparency = 1
+    t(obj, spring(dur), {TextTransparency = 0})
+  end
+  if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+    obj.ImageTransparency = 1
+    t(obj, spring(dur), {ImageTransparency = 0})
+  end
+  if obj:IsA("GuiObject") and obj.BackgroundTransparency < 1 then
+    local b = obj.BackgroundTransparency
+    obj.BackgroundTransparency = 1
+    t(obj, spring(dur), {BackgroundTransparency = b})
+  end
+end
+
+---------------------------------------------------------------------
+-- ROOT & WINDOW
+---------------------------------------------------------------------
+local gui = Instance.new("ScreenGui")
+ gui.Name = "POPCATxHUB"
+ gui.IgnoreGuiInset = true
+ gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ gui.ResetOnSpawn = false
+ gui.Parent = LP:WaitForChild("PlayerGui")
+
+local NORMAL_SIZE = Vector2.new(720, 460)
+local window = Instance.new("Frame")
+ window.Size = UDim2.fromOffset(NORMAL_SIZE.X, NORMAL_SIZE.Y)
+ window.AnchorPoint = Vector2.new(0.5,0.5)
+ window.Position = UDim2.new(0.5,0,0.5,0)
+ window.BackgroundColor3 = THEME.window
+ window.Parent = gui
+roundify(window,18)
+stroke(window, THEME.stroke, 1, .92)
+
+---------------------------------------------------------------------
+-- TITLEBAR
+---------------------------------------------------------------------
+local titleBar = Instance.new("Frame")
+ titleBar.Size = UDim2.new(1,-12,0,44)
+ titleBar.Position = UDim2.fromOffset(6,6)
+ titleBar.BackgroundTransparency = 1
+ titleBar.Parent = window
+
+local texts = Instance.new("Frame")
+ texts.Size = UDim2.fromOffset(260,36)
+ texts.Position = UDim2.fromOffset(6,4)
+ texts.BackgroundTransparency = 1
+ texts.Parent = titleBar
+
+local title = Instance.new("TextLabel")
+ title.BackgroundTransparency = 1
+ title.Text = "POPCAT x HUB"
+ title.Font = Enum.Font.GothamBold
+ title.TextSize = 18
+ title.TextXAlignment = Enum.TextXAlignment.Left
+ title.TextColor3 = THEME.text
+ title.Size = UDim2.fromOffset(260,20)
+ title.Parent = texts
+
+local subtitle = Instance.new("TextLabel")
+ subtitle.BackgroundTransparency = 1
+ subtitle.Text = "Devs - sedz"
+ subtitle.Font = Enum.Font.Gotham
+ subtitle.TextSize = 13
+ subtitle.TextXAlignment = Enum.TextXAlignment.Left
+ subtitle.TextColor3 = THEME.subtext
+ subtitle.Size = UDim2.fromOffset(260,16)
+ subtitle.Position = UDim2.fromOffset(0,18)
+ subtitle.Parent = texts
+
+-- Controls
+local controls = Instance.new("Frame")
+ controls.AnchorPoint = Vector2.new(1,0)
+ controls.Position = UDim2.new(1,-10,0,6)
+ controls.Size = UDim2.fromOffset(150,32)
+ controls.BackgroundTransparency = 1
+ controls.Parent = titleBar
+
+local function ctrlBtn(sym)
+  local b = Instance.new("TextButton")
+  b.AutoButtonColor=false
+  b.Size = UDim2.fromOffset(40,28)
+  b.BackgroundColor3 = THEME.card
+  b.Text = sym
+  b.TextSize = 18
+  b.Font = Enum.Font.GothamBold
+  b.TextColor3 = Color3.fromRGB(215,220,225)
+  roundify(b,10)
+  local s = stroke(b, THEME.stroke, 1, .82)
+  hover(b, THEME.card, THEME.cardHover)
+  b.MouseButton1Down:Connect(function(input)
+    ripple(b, Vector2.new(input.Position.X - b.AbsolutePosition.X, input.Position.Y - b.AbsolutePosition.Y))
+    t(s, TweenInfo.new(0.12), {Transparency = 0.5})
+  end)
+  b.MouseButton1Up:Connect(function()
+    t(s, TweenInfo.new(0.16), {Transparency = 0.82})
+  end)
+  return b
+end
+
+local btnMin = ctrlBtn("-"); btnMin.Position = UDim2.fromOffset(0,2);   btnMin.Parent = controls
+local btnMax = ctrlBtn("□"); btnMax.Position = UDim2.fromOffset(50,2);  btnMax.Parent = controls
+local btnClose = ctrlBtn("X"); btnClose.Position = UDim2.fromOffset(100,2); btnClose.TextColor3 = Color3.fromRGB(230,80,80); btnClose.Parent = controls
+-- simgeleri büyüt (buton boyutları aynı kalır)
+btnMin.TextSize = 30
+btnMax.TextSize = 30
+btnClose.TextSize = 28
+---------------------------------------------------------------------
+-- BODY & PANELS
+---------------------------------------------------------------------
+local body = Instance.new("Frame")
+ body.Size = UDim2.new(1,-24,1,-64)
+ body.Position = UDim2.fromOffset(12,52)
+ body.BackgroundTransparency = 1
+ body.Parent = window
+
+-- Width logic
+local NAV_MIN, NAV_MAX, NAV_GAP = 260, 420, 16
+local currentNavW = NAV_MIN
+
+-- Left nav
+local nav = Instance.new("Frame")
+ nav.Size = UDim2.new(0,currentNavW,1,0)
+ nav.BackgroundColor3 = THEME.panel
+ nav.Parent = body
+roundify(nav,14)
+stroke(nav, THEME.stroke,1,.95)
+
+local navList = Instance.new("Frame")
+ navList.BackgroundTransparency = 1
+ navList.Size  = UDim2.new(1, -12, 1, -12)
+ navList.Position = UDim2.fromOffset(6, 6)
+ navList.Parent = nav
+
+local navPad = Instance.new("UIPadding")
+ navPad.PaddingTop = UDim.new(0,10)
+ navPad.Parent = navList
+
+local navLayout = Instance.new("UIListLayout")
+ navLayout.Padding = UDim.new(0, 10)
+ navLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ navLayout.Parent = navList
+
+-- Selection bar
+local sel = Instance.new("Frame")
+ sel.Name = "SelBar"
+ sel.BackgroundColor3 = THEME.selBar
+ sel.BackgroundTransparency = 0.25
+ sel.Size = UDim2.new(0, 3, 0, 36)
+ sel.AnchorPoint = Vector2.new(0, 0.5)
+ sel.Position = UDim2.fromOffset(3, 0)
+ sel.Visible = false
+ sel.ZIndex = 20
+ sel.Parent = nav
+roundify(sel, 12)
+
+-- Right content
+local content = Instance.new("Frame")
+ content.Position = UDim2.new(0, currentNavW + NAV_GAP, 0, 0)
+ content.Size     = UDim2.new(1, -(currentNavW + NAV_GAP), 1, 0)
+ content.BackgroundColor3 = THEME.panel
+ content.Parent = body
+roundify(content,14)
+stroke(content, THEME.stroke,1,.92)
+
+local contentScroll = Instance.new("ScrollingFrame")
+ contentScroll.BackgroundTransparency = 1
+ contentScroll.Size = UDim2.new(1,-24,1,-24)
+ contentScroll.Position = UDim2.fromOffset(12,6)
+ contentScroll.ScrollBarThickness = 0
+ contentScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ contentScroll.CanvasSize = UDim2.new()
+ contentScroll.ClipsDescendants = true
+ contentScroll.Parent = content
+ contentScroll.ElasticBehavior = Enum.ElasticBehavior.Always
+
+local contentPadTop = Instance.new("UIPadding")
+ contentPadTop.PaddingTop = UDim.new(0,10)
+ contentPadTop.Parent = contentScroll
+
+local contentLayout = Instance.new("UIListLayout")
+ contentLayout.Padding = UDim.new(0,10)
+ contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ contentLayout.Parent = contentScroll
+
+-- Grip with no ripple
+local function attachDragGripToContent(scrollFrame, gripParent)
+  local track = Instance.new("Frame")
+  track.Name = "DragTrack"
+  track.Parent = gripParent
+  track.BackgroundTransparency = 1
+  track.ZIndex = gripParent.ZIndex + 1
+  track.AnchorPoint = Vector2.new(1,0)
+  track.Size = UDim2.new(0, 10, 1, -20)
+  track.Position = UDim2.new(1, -6, 0, 10)
+
+  local grip = Instance.new("Frame")
+  grip.Name = "Grip"
+  grip.Parent = track
+  grip.BackgroundColor3 = Color3.fromRGB(60,68,72)
+  grip.Size = UDim2.new(0, 8, 0, 40)
+  grip.Position = UDim2.fromOffset(1,1)
+  grip.Active = true
+  roundify(grip,6)
+  local gs = stroke(grip, THEME.stroke, 1, .85)
+  hover(grip, Color3.fromRGB(60,68,72), Color3.fromRGB(72,82,86))
+
+  local dragging = false
+  local dragStartY, startCanvas
+
+  local function refreshGrip()
+    local viewH = scrollFrame.AbsoluteWindowSize.Y
+    local canvasH = math.max(viewH, scrollFrame.AbsoluteCanvasSize.Y)
+    local ratio = viewH / canvasH
+    grip.Size = UDim2.new(0,8,0, math.max(30, math.floor(viewH * ratio)))
+    local maxOffset = viewH - grip.AbsoluteSize.Y - 2
+    local scrollRatio = (canvasH==viewH) and 0 or (scrollFrame.CanvasPosition.Y / (canvasH - viewH))
+    grip.Position = UDim2.fromOffset(1, 1 + (maxOffset * scrollRatio))
+  end
+
+  grip.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+      dragging = true
+      dragStartY = input.Position.Y
+      startCanvas = scrollFrame.CanvasPosition
+      input.Changed:Connect(function()
+        if input.UserInputState == Enum.UserInputState.End then dragging = false end
+      end)
+      t(gs, TweenInfo.new(0.1), {Transparency = 0.6})
+    end
+  end)
+
+  UIS.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+      local viewH = scrollFrame.AbsoluteWindowSize.Y
+      local canvasH = math.max(viewH, scrollFrame.AbsoluteCanvasSize.Y)
+      local maxOffset = viewH - grip.AbsoluteSize.Y - 2
+      if maxOffset < 1 then return end
+      local dy = input.Position.Y - dragStartY
+      local ratio = math.clamp(dy / maxOffset, -1, 1)
+      local newY = math.clamp(startCanvas.Y + ratio * (canvasH - viewH), 0, canvasH - viewH)
+      scrollFrame.CanvasPosition = Vector2.new(0, newY)
+    end
+  end)
+
+  grip.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+      t(gs, TweenInfo.new(0.16), {Transparency = 0.85})
+    end
+  end)
+
+  scrollFrame:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(refreshGrip)
+  scrollFrame:GetPropertyChangedSignal("CanvasPosition"):Connect(refreshGrip)
+  scrollFrame:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(refreshGrip)
+  refreshGrip()
+end
+attachDragGripToContent(contentScroll, content)
+
+-- Adjust nav width for long titles
+local function ensureNavWidthFor(text)
+  local txt = tostring(text or "")
+  local size = TextService:GetTextSize(txt, 15, Enum.Font.GothamMedium, Vector2.new(1000,46))
+  -- outer (6 + 6) + inner left padding (14) + text + buffer (20)
+  local required = 6 + 6 + 14 + size.X + 20
+  local newW = math.clamp(required, NAV_MIN, NAV_MAX)
+  if newW > currentNavW then
+    currentNavW = newW
+    nav.Size = UDim2.new(0, currentNavW, 1, 0)
+    content.Position = UDim2.new(0, currentNavW + NAV_GAP, 0, 0)
+    content.Size = UDim2.new(1, -(currentNavW + NAV_GAP), 1, 0)
+  end
+end
+
+---------------------------------------------------------------------
+-- EASY API
+---------------------------------------------------------------------
+local Hub = {}
+Hub.__index = Hub
+
+local Tab = {}
+Tab.__index = Tab
+
+function Hub.new(opts)
+  opts = opts or {}
+  local self = setmetatable({}, Hub)
+  self._tabs = {}
+  self._navButtons = {}
+  self._navHolders = {}
+  self._active = nil
+  title.Text = opts.title or title.Text
+  subtitle.Text = opts.subtitle or subtitle.Text
+  return self
+end
+
+function Hub:CreateTab(name)
+  ensureNavWidthFor(name)
+
+  local holder = Instance.new("Frame")
+  holder.BackgroundTransparency = 1
+  holder.Size = UDim2.new(1,0,0,46)
+  holder.Parent = navList
+
+  local pad = Instance.new("UIPadding")
+  pad.PaddingLeft  = UDim.new(0,6)
+  pad.PaddingRight = UDim.new(0,6)
+  pad.Parent = holder
+
+  local btn = Instance.new("TextButton")
+  btn.Size = UDim2.new(1,0,1,0)
+  btn.BackgroundColor3 = THEME.card
+  btn.AutoButtonColor = false
+  btn.Text = name
+  btn.TextColor3 = Color3.fromRGB(220,226,230)
+  btn.Font = Enum.Font.GothamMedium
+  btn.TextSize = 15
+  btn.TextXAlignment = Enum.TextXAlignment.Left
+  btn.TextTruncate = Enum.TextTruncate.None
+  btn.Parent = holder
+  roundify(btn,12)
+  local s = stroke(btn, THEME.stroke, 1, .93)
+
+  local inPad = Instance.new("UIPadding")
+  inPad.PaddingLeft = UDim.new(0,14)
+  inPad.Parent = btn
+
+  hover(btn, THEME.card, THEME.cardHover)
+  btn.MouseButton1Down:Connect(function(input)
+    ripple(btn, Vector2.new(input.Position.X - btn.AbsolutePosition.X, input.Position.Y - btn.AbsolutePosition.Y))
+    t(s, TweenInfo.new(0.1), {Transparency = 0.75})
+  end)
+  btn.MouseButton1Up:Connect(function()
+    t(s, TweenInfo.new(0.15), {Transparency = 0.93})
+  end)
+
+  local tab = setmetatable({name = name, _defs = {}, _hub = self}, Tab)
+  local index = #self._tabs + 1
+  self._tabs[index] = tab
+  self._navButtons[index] = btn
+  self._navHolders[index] = holder
+
+  btn.MouseButton1Click:Connect(function()
+    self:Open(index)
+  end)
+
+  if not self._active then
+    self:Open(index)
+  end
+
+  return tab
+end
+
+function Tab:Button(label, callback)
+  table.insert(self._defs, {label = label, callback = callback})
+  local hub = self._hub
+  local myIndex
+  for i, tb in ipairs(hub._tabs) do
+    if tb == self then myIndex = i break end
+  end
+  if hub._active == myIndex then
+    hub:_renderButton(label, callback)
+  end
+  return self
+end
+
+local function clearContent()
+  for _, ch in ipairs(contentScroll:GetChildren()) do
+    if ch:IsA("GuiObject") and ch ~= contentLayout then
+      ch:Destroy()
+    end
+  end
+end
+
+function Hub:_renderButton(label, callback)
+  local holder = Instance.new("Frame")
+  holder.BackgroundTransparency = 1
+  holder.Size = UDim2.new(1,0,0,44)
+  holder.Parent = contentScroll
+
+  local pad = Instance.new("UIPadding")
+  pad.PaddingLeft  = UDim.new(0,8)
+  pad.PaddingRight = UDim.new(0,16) -- extra right to balance grip
+  pad.Parent = holder
+
+  local b = Instance.new("TextButton")
+  b.Size = UDim2.new(1,0,1,0)
+  b.BackgroundColor3 = THEME.card
+  b.AutoButtonColor = false
+  b.Text = label
+  b.TextColor3 = Color3.fromRGB(225,230,235)
+  b.Font = Enum.Font.GothamMedium
+  b.TextSize = 14
+  b.Parent = holder
+
+  roundify(b,10)
+  local s = stroke(b, THEME.stroke, 1, .9)
+  local ip = Instance.new("UIPadding")
+  ip.PaddingLeft = UDim.new(0,14)
+  ip.Parent = b
+
+  hover(b, THEME.card, THEME.cardHover)
+  b.MouseButton1Down:Connect(function(input)
+    ripple(b, Vector2.new(input.Position.X - b.AbsolutePosition.X, input.Position.Y - b.AbsolutePosition.Y))
+    t(s, TweenInfo.new(0.1), {Transparency = 0.75})
+  end)
+  b.MouseButton1Up:Connect(function()
+    t(s, TweenInfo.new(0.16), {Transparency = 0.9})
+  end)
+  b.MouseButton1Click:Connect(function()
+    local ok, err = pcall(callback or function() end)
+    if not ok then warn("[POPCAT x HUB] Button error:", err) end
+  end)
+
+  fadeIn(holder)
+end
+
+local function setSelected(btn, on)
+  t(btn, spring(0.16), {BackgroundColor3 = on and THEME.cardActive or THEME.card})
+end
+
+local function moveSelTo(holder)
+  if not holder then sel.Visible = false return end
+  sel.Visible = true
+  local targetY = holder.AbsolutePosition.Y + holder.AbsoluteSize.Y/2
+  local relY = targetY - nav.AbsolutePosition.Y
+  t(sel, spring(0.22), {Position = UDim2.fromOffset(3, relY), Size = UDim2.new(0, 3, 0, holder.AbsoluteSize.Y - 10)})
+end
+
+function Hub:Open(i)
+  if self._active == i then return end
+  self._active = i
+  for k, b in ipairs(self._navButtons) do setSelected(b, k == i) end
+  moveSelTo(self._navHolders[i])
+  clearContent()
+  local tab = self._tabs[i]
+  for _, def in ipairs(tab._defs) do
+    self:_renderButton(def.label, def.callback)
+  end
+end
+
+---------------------------------------------------------------------
+-- DRAG WINDOW FROM TITLEBAR
+---------------------------------------------------------------------
+ do
+  local dragging, dragStart, startPos
+  titleBar.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+      dragging = true
+      dragStart = i.Position
+      startPos = window.Position
+      i.Changed:Connect(function()
+        if i.UserInputState == Enum.UserInputState.End then dragging = false end
+      end)
+    end
+  end)
+  titleBar.InputChanged:Connect(function(i)
+    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+      local d = i.Position - dragStart
+      window.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+  end)
+ end
+
+---------------------------------------------------------------------
+-- WINDOW CONTROLS (Text-safe F8)
+---------------------------------------------------------------------
+local maximized = false
+
+local function animateMinimize()
+  local pos = window.Position
+  t(window, TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {
+    Position = UDim2.new(pos.X.Scale, pos.X.Offset, pos.Y.Scale, pos.Y.Offset + 10),
+    BackgroundTransparency = 0.05
+  })
+  task.delay(0.16, function() gui.Enabled = false end)
+end
+
+local function animateRestore()
+  gui.Enabled = true
+  local pos = window.Position
+  window.Position = UDim2.new(pos.X.Scale, pos.X.Offset, pos.Y.Scale, pos.Y.Offset + 10)
+  window.BackgroundTransparency = 0.05
+  t(window, TweenInfo.new(0.18, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+    Position = UDim2.new(pos.X.Scale, pos.X.Offset, pos.Y.Scale, pos.Y.Offset),
+    BackgroundTransparency = 0
+  })
+end
+
+btnMin.MouseButton1Click:Connect(function()
+  animateMinimize()
+end)
+
+btnMax.MouseButton1Click:Connect(function()
+  maximized = not maximized
+  if maximized then
+    t(window, spring(0.22), {Size = UDim2.new(1,-24,1,-24), Position = UDim2.new(0.5,0,0.5,0)})
+  else
+    t(window, spring(0.22), {Size = UDim2.fromOffset(NORMAL_SIZE.X, NORMAL_SIZE.Y), Position = UDim2.new(0.5,0,0.5,0)})
+  end
+end)
+
+btnClose.MouseButton1Click:Connect(function()
+  t(window, TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {BackgroundTransparency = 0.05})
+  task.delay(0.16, function() gui:Destroy() end)
+end)
+
+UIS.InputBegan:Connect(function(input, gp)
+  if gp then return end
+  if input.KeyCode == Enum.KeyCode.F8 then
+    if gui.Enabled then animateMinimize() else animateRestore() end
+  end
+end)
+
+---------------------------------------------------------------------
+-- BUILD VIA EASY API (sample)
+---------------------------------------------------------------------
+local hub = Hub.new({ title = "POPCAT x HUB", subtitle = "Devs - sedz" })
+
+local t1 = hub:CreateTab("Universal")
+t1:Button("İnfinite Yield", function()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))() 
+end)
+t1:Button("Fling", function()
+  loadstring(game:HttpGet("https://pastebin.com/raw/LgZwZ7ZB"))()
+end)
+t1:Button("CTRL Click TP", function()
+  loadstring(game:HttpGet("https://obj.wearedevs.net/2/scripts/Click%20Teleport.lua"))()
+end)
+t1:Button("FE Emote", function()
+  loadstring(game:HttpGet("https://pastebin.com/raw/FWwdST5Y"))()
+end)
+
+local t2 = hub:CreateTab("The Strongest Battlegrounds")
+t2:Button("Phantasm", function()
+   loadstring(game:HttpGet("https://raw.githubusercontent.com/ATrainz/Phantasm/refs/heads/main/Games/TSB.lua"))
+end)
+t2:Button("Tech Helper", function()
+   loadstring(game:HttpGet("https://raw.githubusercontent.com/needanewphone32-eng/tsbfiles/refs/heads/main/Main1.lua"))
+end)
+
+local t3 = hub:CreateTab("Build A Boat")
+t3:Button("Auto Build (OLD)", function()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/max2007killer/auto-build-not-limit/main/buildaboatv2obs.txt")) 
+end)
+t3:Button("Auto Build (NEW)", function()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/catblox1346/StensUIReMake/refs/heads/main/Script/BoatBuilderHub")) 
+end)
+t3:Button("Candy Farm (USE AUTOEXEC)", function()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/catblox1346/StensUIReMake/refs/heads/main/BabftRelated/FastestCandyFarm")) 
+end)
+t3:Button("Asu BABFT", function()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/TheRealAsu/BABFT/refs/heads/main/Loader.lua")) 
+end)
+t3:Button("NovBoat", function()
+  loadstring(game:HttpGet("https://raw.githubusercontent.com/TheRealAsu/BABFT/refs/heads/main/Loader.lua")) 
+end)
