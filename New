@@ -636,3 +636,8 @@ end)
 t3:Button("NovBoat", function()
   loadstring(game:HttpGet("https://raw.githubusercontent.com/TheRealAsu/BABFT/refs/heads/main/Loader.lua")) 
 end)
+
+local t4 = hub:CreateTab("Flick")
+t4:Button("Esp And Aimbot", function()
+  loadstring(game:HttpGet("https://pastebin.com/raw/RZK9XdtH"))()
+end)
