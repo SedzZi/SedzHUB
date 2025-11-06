@@ -4,7 +4,7 @@
 --  * F8 open/close uses slide (no scale) -> crisp text
 --  * Left nav auto-expands to fit long titles; right content reflows
 --  * Symmetric top spacing; content buttons account for right grip
---  * No ripple on grip; ripple kept on buttons
+--  * No ripple effects on any buttons
 
 local Players      = game:GetService("Players")
 local UIS          = game:GetService("UserInputService")
@@ -53,21 +53,6 @@ end
 
 local function spring(dur)
   return TweenInfo.new(dur or 0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-end
-
-local function ripple(parent, pos)
-  local r = Instance.new("Frame")
-  r.BackgroundColor3 = Color3.fromRGB(255,255,255)
-  r.BackgroundTransparency = 0.8
-  r.AnchorPoint = Vector2.new(0.5,0.5)
-  r.Position = UDim2.fromOffset(pos.X, pos.Y)
-  r.Size = UDim2.fromOffset(0,0)
-  r.ZIndex = (parent.ZIndex or 1) + 1
-  r.Parent = parent
-  roundify(r, 9999)
-  local max = math.max(parent.AbsoluteSize.X, parent.AbsoluteSize.Y) * 1.6
-  t(r, TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(max,max), BackgroundTransparency = 1})
-  game.Debris:AddItem(r, 0.45)
 end
 
 local function hover(btn, normal, over)
@@ -168,8 +153,7 @@ local function ctrlBtn(sym)
   roundify(b,10)
   local s = stroke(b, THEME.stroke, 1, .82)
   hover(b, THEME.card, THEME.cardHover)
-  b.MouseButton1Down:Connect(function(input)
-    ripple(b, Vector2.new(input.Position.X - b.AbsolutePosition.X, input.Position.Y - b.AbsolutePosition.Y))
+  b.MouseButton1Down:Connect(function()
     t(s, TweenInfo.new(0.12), {Transparency = 0.5})
   end)
   b.MouseButton1Up:Connect(function()
@@ -298,33 +282,41 @@ local function attachDragGripToContent(scrollFrame, gripParent)
     grip.Position = UDim2.fromOffset(1, 1 + (maxOffset * scrollRatio))
   end
 
-  grip.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+  grip.InputBegan:Connect(function(inputObject)
+    if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
       dragging = true
-      dragStartY = input.Position.Y
+      dragStartY = inputObject.Position.Y
       startCanvas = scrollFrame.CanvasPosition
-      input.Changed:Connect(function()
-        if input.UserInputState == Enum.UserInputState.End then dragging = false end
+      
+      local connection
+      connection = inputObject.Changed:Connect(function()
+        if inputObject.UserInputState == Enum.UserInputState.End then 
+          dragging = false
+          if connection then
+            connection:Disconnect()
+          end
+        end
       end)
+      
       t(gs, TweenInfo.new(0.1), {Transparency = 0.6})
     end
   end)
 
-  UIS.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+  UIS.InputChanged:Connect(function(inputObject)
+    if dragging and inputObject.UserInputType == Enum.UserInputType.MouseMovement then
       local viewH = scrollFrame.AbsoluteWindowSize.Y
       local canvasH = math.max(viewH, scrollFrame.AbsoluteCanvasSize.Y)
       local maxOffset = viewH - grip.AbsoluteSize.Y - 2
       if maxOffset < 1 then return end
-      local dy = input.Position.Y - dragStartY
+      local dy = inputObject.Position.Y - dragStartY
       local ratio = math.clamp(dy / maxOffset, -1, 1)
       local newY = math.clamp(startCanvas.Y + ratio * (canvasH - viewH), 0, canvasH - viewH)
       scrollFrame.CanvasPosition = Vector2.new(0, newY)
     end
   end)
 
-  grip.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+  grip.InputEnded:Connect(function(inputObject)
+    if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
       t(gs, TweenInfo.new(0.16), {Transparency = 0.85})
     end
   end)
@@ -404,8 +396,7 @@ function Hub:CreateTab(name)
   inPad.Parent = btn
 
   hover(btn, THEME.card, THEME.cardHover)
-  btn.MouseButton1Down:Connect(function(input)
-    ripple(btn, Vector2.new(input.Position.X - btn.AbsolutePosition.X, input.Position.Y - btn.AbsolutePosition.Y))
+  btn.MouseButton1Down:Connect(function()
     t(s, TweenInfo.new(0.1), {Transparency = 0.75})
   end)
   btn.MouseButton1Up:Connect(function()
@@ -478,8 +469,7 @@ function Hub:_renderButton(label, callback)
   ip.Parent = b
 
   hover(b, THEME.card, THEME.cardHover)
-  b.MouseButton1Down:Connect(function(input)
-    ripple(b, Vector2.new(input.Position.X - b.AbsolutePosition.X, input.Position.Y - b.AbsolutePosition.Y))
+  b.MouseButton1Down:Connect(function()
     t(s, TweenInfo.new(0.1), {Transparency = 0.75})
   end)
   b.MouseButton1Up:Connect(function()
@@ -520,25 +510,33 @@ end
 ---------------------------------------------------------------------
 -- DRAG WINDOW FROM TITLEBAR
 ---------------------------------------------------------------------
- do
+do
   local dragging, dragStart, startPos
-  titleBar.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+  titleBar.InputBegan:Connect(function(inputObject)
+    if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
       dragging = true
-      dragStart = i.Position
+      dragStart = inputObject.Position
       startPos = window.Position
-      i.Changed:Connect(function()
-        if i.UserInputState == Enum.UserInputState.End then dragging = false end
+      
+      local connection
+      connection = inputObject.Changed:Connect(function()
+        if inputObject.UserInputState == Enum.UserInputState.End then 
+          dragging = false
+          if connection then
+            connection:Disconnect()
+          end
+        end
       end)
     end
   end)
-  titleBar.InputChanged:Connect(function(i)
-    if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-      local d = i.Position - dragStart
+  
+  titleBar.InputChanged:Connect(function(inputObject)
+    if dragging and inputObject.UserInputType == Enum.UserInputType.MouseMovement then
+      local d = inputObject.Position - dragStart
       window.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
     end
   end)
- end
+end
 
 ---------------------------------------------------------------------
 -- WINDOW CONTROLS (Text-safe F8)
