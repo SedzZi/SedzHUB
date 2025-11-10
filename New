@@ -642,7 +642,7 @@ end)
 t3:Button("Asu BABFT", function()
   loadstring(game:HttpGet("https://raw.githubusercontent.com/TheRealAsu/BABFT/refs/heads/main/Loader.lua"))()
 end)
-t3:Button("NovBoat", function()
+t3:Button("NovBoat (KEY : N-314159)", function()
   loadstring(game:HttpGet("https://rawscripts.net/raw/Build-A-Boat-For-Treasure-NovBot-Revmp-17896"))()
 end)
 
